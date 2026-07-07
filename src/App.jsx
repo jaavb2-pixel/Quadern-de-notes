@@ -180,6 +180,25 @@ export default function App() {
   function actualitzaCurs(nc) { setCursos(cursos.map((c) => (c.id === nc.id ? nc : c))); }
   function afegirAlumne() { actualitzaCurs({ ...curs, alumnes: [...curs.alumnes, nouAlumne(crypto.randomUUID())] }); }
 
+  // Ordena l'alumnat alfabèticament pel primer cognom (després 2n cognom i nom).
+  // Les files completament buides es queden al final perquè les pugues omplir.
+  function ordenaAlfabeticament() {
+    const cmp = (x, y) => x.localeCompare(y, "ca", { sensitivity: "base" });
+    const teContingut = (a) => a.cognom1 || a.cognom2 || a.nom;
+    const ordenats = [...curs.alumnes].sort((a, b) => {
+      const aBuit = !teContingut(a), bBuit = !teContingut(b);
+      if (aBuit && bBuit) return 0;
+      if (aBuit) return 1;   // els buits, al final
+      if (bBuit) return -1;
+      return (
+        cmp(a.cognom1 || "", b.cognom1 || "") ||
+        cmp(a.cognom2 || "", b.cognom2 || "") ||
+        cmp(a.nom || "", b.nom || "")
+      );
+    });
+    actualitzaCurs({ ...curs, alumnes: ordenats });
+  }
+
   // Interpreta el text enganxat des d'Excel (columnes separades per tabulador o ; o ,)
   function analitzaText(text) {
     const linies = text.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.trim() !== "");
@@ -540,6 +559,7 @@ export default function App() {
           <div style={styles.peu}>
             <button style={styles.btnAfegirAlumne} onClick={afegirAlumne}>+ Afegir alumne</button>
             <button style={styles.btnImportar} onClick={() => { setImportObert(true); setTextImport(""); setModeImport("afegir"); }}>Importar alumnat</button>
+            <button style={styles.btnOrdenar} onClick={ordenaAlfabeticament} title="Ordena l'alumnat pel primer cognom">Ordenar A–Z</button>
             <p style={styles.nota}>
               Avaluació contínua: mitjana de les notes de totes les avaluacions fetes fins ara. Pesos: 40% exàmens · 40% pràctica · 20% actitud. Les cel·les buides no penalitzen. Pots afegir o llevar columnes als blocs d'exàmens i pràctica amb els botons + i ×; cada grup té les seues columnes pròpies i independents.
             </p>
@@ -687,6 +707,7 @@ const styles = {
   peu: { padding: "18px 24px 40px" },
   btnAfegirAlumne: { padding: "10px 18px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#fff", color: "#334155", fontSize: 13.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" },
   btnImportar: { padding: "10px 18px", borderRadius: 8, border: "1px solid #BFDBFE", background: "#EFF6FF", color: "#1D4ED8", fontSize: 13.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", marginLeft: 10 },
+  btnOrdenar: { padding: "10px 18px", borderRadius: 8, border: "1px solid #DDD6FE", background: "#F5F3FF", color: "#6D28D9", fontSize: 13.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", marginLeft: 10 },
   importTitol: { fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, margin: "0 0 8px", color: "#1E293B" },
   importAjuda: { fontSize: 13, color: "#64748B", margin: "0 0 14px", lineHeight: 1.55 },
   importArea: { width: "100%", minHeight: 140, borderRadius: 8, border: "1px solid #CBD5E1", padding: "10px 12px", fontSize: 13, fontFamily: "monospace", resize: "vertical", color: "#1E293B" },
