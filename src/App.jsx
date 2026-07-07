@@ -87,6 +87,9 @@ export default function App() {
   const [errorCarrega, setErrorCarrega] = useState("");
   const [afegintColumna, setAfegintColumna] = useState(null); // id del bloc on s'afig
   const [nomNovaColumna, setNomNovaColumna] = useState("");
+  const [importObert, setImportObert] = useState(false);
+  const [textImport, setTextImport] = useState("");
+  const [modeImport, setModeImport] = useState("afegir"); // "afegir" o "reemplacar"
   const [driveLlest, setDriveLlest] = useState(false);
   const [connectat, setConnectat] = useState(false);
   const [estatDrive, setEstatDrive] = useState(""); // missatge d'estat: desant, carregant, desat…
@@ -176,6 +179,45 @@ export default function App() {
   // ---- Alumnes ----
   function actualitzaCurs(nc) { setCursos(cursos.map((c) => (c.id === nc.id ? nc : c))); }
   function afegirAlumne() { actualitzaCurs({ ...curs, alumnes: [...curs.alumnes, nouAlumne(crypto.randomUUID())] }); }
+
+  // Interpreta el text enganxat des d'Excel (columnes separades per tabulador o ; o ,)
+  function analitzaText(text) {
+    const linies = text.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.trim() !== "");
+    const alumnes = [];
+    for (const linia of linies) {
+      // Excel separa columnes amb tabulador en copiar; admetem també ; i , com a alternativa
+      let parts;
+      if (linia.includes("\t")) parts = linia.split("\t");
+      else if (linia.includes(";")) parts = linia.split(";");
+      else parts = linia.split(/,|\s{2,}/); // coma o dos+ espais
+      parts = parts.map((p) => p.trim());
+      const [cognom1 = "", cognom2 = "", nom = ""] = parts;
+      // Ignora una possible fila de capçalera
+      const potserCapcalera = /^(cognom|cognoms|nom|alumne|apellido)/i.test(cognom1);
+      if (potserCapcalera && alumnes.length === 0) continue;
+      if (!cognom1 && !cognom2 && !nom) continue;
+      alumnes.push({ id: crypto.randomUUID(), cognom1, cognom2, nom, notes: {} });
+    }
+    return alumnes;
+  }
+
+  function previsualitzaImport() {
+    return analitzaText(textImport);
+  }
+
+  function confirmaImport() {
+    const nous = analitzaText(textImport);
+    if (nous.length === 0) return;
+    if (modeImport === "reemplacar") {
+      actualitzaCurs({ ...curs, alumnes: nous });
+    } else {
+      // Afegir: si les últimes files estan buides, les substituïm pels importats
+      const existents = curs.alumnes.filter((a) => a.cognom1 || a.cognom2 || a.nom || Object.keys(a.notes).length);
+      actualitzaCurs({ ...curs, alumnes: [...existents, ...nous] });
+    }
+    setImportObert(false);
+    setTextImport("");
+  }
   function eliminarAlumne(aid) {
     const al = curs.alumnes.find((a) => a.id === aid);
     const nomComplet = [al.nom, al.cognom1, al.cognom2].filter(Boolean).join(" ").trim();
@@ -497,11 +539,56 @@ export default function App() {
 
           <div style={styles.peu}>
             <button style={styles.btnAfegirAlumne} onClick={afegirAlumne}>+ Afegir alumne</button>
+            <button style={styles.btnImportar} onClick={() => { setImportObert(true); setTextImport(""); setModeImport("afegir"); }}>Importar alumnat</button>
             <p style={styles.nota}>
               Avaluació contínua: mitjana de les notes de totes les avaluacions fetes fins ara. Pesos: 40% exàmens · 40% pràctica · 20% actitud. Les cel·les buides no penalitzen. Pots afegir o llevar columnes als blocs d'exàmens i pràctica amb els botons + i ×; cada grup té les seues columnes pròpies i independents.
             </p>
           </div>
         </>
+      )}
+
+      {importObert && (
+        <div style={styles.modalFons} onClick={() => setImportObert(false)}>
+          <div style={{ ...styles.modal, maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={styles.importTitol}>Importar alumnat a «{curs.nom}»</h2>
+            <p style={styles.importAjuda}>
+              Al teu full de càlcul, selecciona les tres columnes (Cognom 1, Cognom 2, Nom) amb les files
+              de l'alumnat, còpia-les (Ctrl+C) i enganxa-les ací baix (Ctrl+V). Cada fila serà un alumne.
+            </p>
+            <textarea
+              style={styles.importArea}
+              value={textImport}
+              onChange={(e) => setTextImport(e.target.value)}
+              placeholder={"Enganxa ací. Exemple:\nGarcia\tLópez\tMaria\nSanchis\tMoll\tPau"}
+              autoFocus
+            />
+            <div style={styles.importOpcions}>
+              <label style={styles.importRadio}>
+                <input type="radio" name="modeImport" checked={modeImport === "afegir"} onChange={() => setModeImport("afegir")} />
+                <span>Afegir als que ja hi ha</span>
+              </label>
+              <label style={styles.importRadio}>
+                <input type="radio" name="modeImport" checked={modeImport === "reemplacar"} onChange={() => setModeImport("reemplacar")} />
+                <span>Reemplaçar tot l'alumnat del grup</span>
+              </label>
+            </div>
+            {textImport.trim() && (
+              <p style={styles.importPreview}>
+                Es detecten <strong>{previsualitzaImport().length}</strong> alumnes.
+              </p>
+            )}
+            <div style={styles.modalBotons}>
+              <button style={styles.btnCancelar} onClick={() => setImportObert(false)}>Cancel·lar</button>
+              <button
+                style={{ ...styles.btnConfirmar, background: "#2563EB", opacity: previsualitzaImport().length ? 1 : 0.5 }}
+                onClick={confirmaImport}
+                disabled={!previsualitzaImport().length}
+              >
+                Importar {previsualitzaImport().length || ""}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {confirmacio && (
@@ -599,6 +686,13 @@ const styles = {
   btnEliminar: { border: "none", background: "transparent", color: "#CBD5E1", cursor: "pointer", fontSize: 17, lineHeight: 1, padding: "2px 6px" },
   peu: { padding: "18px 24px 40px" },
   btnAfegirAlumne: { padding: "10px 18px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#fff", color: "#334155", fontSize: 13.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" },
+  btnImportar: { padding: "10px 18px", borderRadius: 8, border: "1px solid #BFDBFE", background: "#EFF6FF", color: "#1D4ED8", fontSize: 13.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", marginLeft: 10 },
+  importTitol: { fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, margin: "0 0 8px", color: "#1E293B" },
+  importAjuda: { fontSize: 13, color: "#64748B", margin: "0 0 14px", lineHeight: 1.55 },
+  importArea: { width: "100%", minHeight: 140, borderRadius: 8, border: "1px solid #CBD5E1", padding: "10px 12px", fontSize: 13, fontFamily: "monospace", resize: "vertical", color: "#1E293B" },
+  importOpcions: { display: "flex", gap: 20, margin: "14px 0 4px", flexWrap: "wrap" },
+  importRadio: { display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: "#334155", cursor: "pointer" },
+  importPreview: { fontSize: 13, color: "#059669", margin: "10px 0 0" },
   nota: { fontSize: 12, color: "#94A3B8", marginTop: 14, maxWidth: 760, lineHeight: 1.6 },
   buit: { padding: "60px 24px", textAlign: "center", color: "#94A3B8" },
   modalFons: { position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 },
