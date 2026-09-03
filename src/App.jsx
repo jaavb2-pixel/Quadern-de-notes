@@ -3,6 +3,7 @@ import {
   inicialitzaDrive, estaConfigurat, connecta, estaConnectat, desconnecta,
   desaAlDrive, carregaDelDrive,
 } from "./drive";
+import { exportaAlumne, exportaGrup } from "./reunions";
 
 // ============ Configuració inicial dels blocs de criteris ============
 const BLOCS_INICIALS = [
@@ -66,6 +67,19 @@ function escalaColor(n) {
   const t = (n - 5) / 5; return `rgb(${254 - t * 120}, 240, ${138 - t * 6})`;
 }
 
+function formataData(iso) {
+  if (!iso) return "(sense data)";
+  const parts = iso.split("-");
+  if (parts.length !== 3) return iso;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+function etiquetaMotiu(m) {
+  return ({ academic: "Seguiment acadèmic", comportament: "Comportament", absentisme: "Absentisme", orientacio: "Orientació", altres: "Altres" }[m]) || "Altres";
+}
+function etiquetaAssistents(a) {
+  return ({ mare: "Mare", pare: "Pare", tutor: "Tutor/a legal", ambdos: "Ambdós progenitors", altres: "Altres" }[a]) || "Altres";
+}
+
 // ============ Estat inicial ============
 function clonaBlocs() {
   return BLOCS_INICIALS.map((b) => ({ ...b, criteris: [...b.criteris] }));
@@ -90,6 +104,8 @@ export default function App() {
   const [importObert, setImportObert] = useState(false);
   const [textImport, setTextImport] = useState("");
   const [modeImport, setModeImport] = useState("afegir"); // "afegir" o "reemplacar"
+  const [reunionsAlumne, setReunionsAlumne] = useState(null); // id de l'alumne obert
+  const [novaReunio, setNovaReunio] = useState(null); // dades del formulari de nova reunió
   const [driveLlest, setDriveLlest] = useState(false);
   const [connectat, setConnectat] = useState(false);
   const [estatDrive, setEstatDrive] = useState(""); // missatge d'estat: desant, carregant, desat…
@@ -198,6 +214,41 @@ export default function App() {
     });
     actualitzaCurs({ ...curs, alumnes: ordenats });
   }
+
+  // ---- Reunions amb famílies ----
+  function obriReunions(aid) { setReunionsAlumne(aid); setNovaReunio(null); }
+  function tancaReunions() { setReunionsAlumne(null); setNovaReunio(null); }
+
+  function iniciaNovaReunio() {
+    const avui = new Date().toISOString().slice(0, 10);
+    setNovaReunio({ data: avui, tipus: "presencial", motiu: "academic", assistents: "mare", text: "" });
+  }
+
+  function desaNovaReunio() {
+    if (!novaReunio || !reunionsAlumne) return;
+    const reunio = { id: crypto.randomUUID(), ...novaReunio };
+    actualitzaCurs({
+      ...curs,
+      alumnes: curs.alumnes.map((a) =>
+        a.id === reunionsAlumne ? { ...a, reunions: [...(a.reunions || []), reunio] } : a
+      ),
+    });
+    setNovaReunio(null);
+  }
+
+  function eliminaReunio(aid, rid) {
+    setConfirmacio({
+      missatge: "Vols eliminar aquest registre de reunió? No es podrà recuperar.",
+      accio: () => actualitzaCurs({
+        ...curs,
+        alumnes: curs.alumnes.map((a) =>
+          a.id === aid ? { ...a, reunions: (a.reunions || []).filter((r) => r.id !== rid) } : a
+        ),
+      }),
+    });
+  }
+
+  function comptaReunions(a) { return (a.reunions || []).length; }
 
   // Interpreta el text enganxat des d'Excel (columnes separades per tabulador o ; o ,)
   function analitzaText(text) {
@@ -547,7 +598,18 @@ export default function App() {
                         <span style={{ fontWeight: 700, color: "#831843" }}>{nAcu !== null ? nAcu.toFixed(2) : "—"}</span>
                       </td>
                       <td style={styles.tdAccions}>
-                        <button style={styles.btnEliminar} onClick={() => eliminarAlumne(a.id)} title="Eliminar alumne" aria-label="Eliminar alumne">×</button>
+                        <div style={styles.accionsWrap}>
+                          <button
+                            style={{ ...styles.btnReunions, ...(comptaReunions(a) ? styles.btnReunionsActiu : {}) }}
+                            onClick={() => obriReunions(a.id)}
+                            title={comptaReunions(a) ? `${comptaReunions(a)} reunió/ns registrada/es` : "Registrar reunió amb la família"}
+                            aria-label="Reunions amb la família"
+                          >
+                            ✉
+                            {comptaReunions(a) > 0 && <span style={styles.comptador}>{comptaReunions(a)}</span>}
+                          </button>
+                          <button style={styles.btnEliminar} onClick={() => eliminarAlumne(a.id)} title="Eliminar alumne" aria-label="Eliminar alumne">×</button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -560,12 +622,120 @@ export default function App() {
             <button style={styles.btnAfegirAlumne} onClick={afegirAlumne}>+ Afegir alumne</button>
             <button style={styles.btnImportar} onClick={() => { setImportObert(true); setTextImport(""); setModeImport("afegir"); }}>Importar alumnat</button>
             <button style={styles.btnOrdenar} onClick={ordenaAlfabeticament} title="Ordena l'alumnat pel primer cognom">Ordenar A–Z</button>
+            <button style={styles.btnExportarReunions} onClick={() => exportaGrup(curs)} title="Exporta a Excel totes les reunions del grup">Exportar reunions (Excel)</button>
             <p style={styles.nota}>
               Avaluació contínua: mitjana de les notes de totes les avaluacions fetes fins ara. Pesos: 40% exàmens · 40% pràctica · 20% actitud. Les cel·les buides no penalitzen. Pots afegir o llevar columnes als blocs d'exàmens i pràctica amb els botons + i ×; cada grup té les seues columnes pròpies i independents.
             </p>
           </div>
         </>
       )}
+
+      {reunionsAlumne && (() => {
+        const al = curs.alumnes.find((a) => a.id === reunionsAlumne);
+        if (!al) return null;
+        const nomAl = [al.cognom1, al.cognom2, al.nom].filter(Boolean).join(" ").trim() || "(sense nom)";
+        const reunions = [...(al.reunions || [])].sort((x, y) => (y.data || "").localeCompare(x.data || ""));
+        return (
+          <div style={styles.modalFons} onClick={tancaReunions}>
+            <div style={{ ...styles.modal, maxWidth: 620, maxHeight: "85vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.reunioCap}>
+                <div>
+                  <h2 style={styles.importTitol}>Reunions amb la família</h2>
+                  <p style={styles.reunioSubtitol}>{nomAl} · {curs.nom}</p>
+                </div>
+                <button style={styles.reunioTancar} onClick={tancaReunions} aria-label="Tancar">×</button>
+              </div>
+
+              {!novaReunio && (
+                <div style={styles.reunioAccions}>
+                  <button style={styles.btnNovaReunio} onClick={iniciaNovaReunio}>+ Nova reunió</button>
+                  {reunions.length > 0 && (
+                    <button style={styles.btnExportaU} onClick={() => exportaAlumne(al, curs.nom)}>Exportar a Excel</button>
+                  )}
+                </div>
+              )}
+
+              {novaReunio && (
+                <div style={styles.formReunio}>
+                  <div style={styles.formFila}>
+                    <label style={styles.formCamp}>
+                      <span style={styles.formEtiqueta}>Data</span>
+                      <input type="date" style={styles.formInput} value={novaReunio.data}
+                        onChange={(e) => setNovaReunio({ ...novaReunio, data: e.target.value })} />
+                    </label>
+                    <label style={styles.formCamp}>
+                      <span style={styles.formEtiqueta}>Tipus</span>
+                      <select style={styles.formInput} value={novaReunio.tipus}
+                        onChange={(e) => setNovaReunio({ ...novaReunio, tipus: e.target.value })}>
+                        <option value="presencial">Presencial</option>
+                        <option value="telefonica">Telefònica</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div style={styles.formFila}>
+                    <label style={styles.formCamp}>
+                      <span style={styles.formEtiqueta}>Motiu</span>
+                      <select style={styles.formInput} value={novaReunio.motiu}
+                        onChange={(e) => setNovaReunio({ ...novaReunio, motiu: e.target.value })}>
+                        <option value="academic">Seguiment acadèmic</option>
+                        <option value="comportament">Comportament</option>
+                        <option value="absentisme">Absentisme</option>
+                        <option value="orientacio">Orientació</option>
+                        <option value="altres">Altres</option>
+                      </select>
+                    </label>
+                    <label style={styles.formCamp}>
+                      <span style={styles.formEtiqueta}>Assistents</span>
+                      <select style={styles.formInput} value={novaReunio.assistents}
+                        onChange={(e) => setNovaReunio({ ...novaReunio, assistents: e.target.value })}>
+                        <option value="mare">Mare</option>
+                        <option value="pare">Pare</option>
+                        <option value="tutor">Tutor/a legal</option>
+                        <option value="ambdos">Ambdós progenitors</option>
+                        <option value="altres">Altres</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label style={styles.formCamp}>
+                    <span style={styles.formEtiqueta}>Descripció de la conversa</span>
+                    <textarea style={styles.formTextarea} value={novaReunio.text}
+                      placeholder="Resum factual del que es va tractar i els acords presos."
+                      onChange={(e) => setNovaReunio({ ...novaReunio, text: e.target.value })} />
+                  </label>
+                  <div style={styles.modalBotons}>
+                    <button style={styles.btnCancelar} onClick={() => setNovaReunio(null)}>Cancel·lar</button>
+                    <button style={{ ...styles.btnConfirmar, background: "#059669" }} onClick={desaNovaReunio}>Desar reunió</button>
+                  </div>
+                </div>
+              )}
+
+              {!novaReunio && (
+                <div style={styles.llistaReunions}>
+                  {reunions.length === 0 ? (
+                    <p style={styles.reunioBuit}>Encara no hi ha cap reunió registrada per a aquest alumne.</p>
+                  ) : (
+                    reunions.map((r) => (
+                      <div key={r.id} style={styles.targetaReunio}>
+                        <div style={styles.targetaCap}>
+                          <span style={styles.targetaData}>{formataData(r.data)}</span>
+                          <span style={{ ...styles.etiquetaTipus, ...(r.tipus === "telefonica" ? styles.etiquetaTel : styles.etiquetaPres) }}>
+                            {r.tipus === "telefonica" ? "Telefònica" : "Presencial"}
+                          </span>
+                          <button style={styles.reunioEliminar} onClick={() => eliminaReunio(al.id, r.id)} title="Eliminar reunió" aria-label="Eliminar reunió">×</button>
+                        </div>
+                        <div style={styles.targetaMeta}>
+                          {etiquetaMotiu(r.motiu)} · {etiquetaAssistents(r.assistents)}
+                        </div>
+                        {r.text && <p style={styles.targetaText}>{r.text}</p>}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {importObert && (
         <div style={styles.modalFons} onClick={() => setImportObert(false)}>
@@ -681,7 +851,7 @@ const styles = {
   taula: { borderCollapse: "separate", borderSpacing: 0, width: "100%", fontSize: 13 },
   thAlumnat: { background: "#334155", color: "#fff", padding: "8px 12px", textAlign: "center", fontWeight: 600, fontSize: 12 },
   thBloc: { color: "#fff", padding: "8px 10px", textAlign: "center", fontWeight: 600, fontSize: 12, borderLeft: "1px solid rgba(255,255,255,0.15)" },
-  thAccions: { background: "#334155", width: 36 },
+  thAccions: { background: "#334155", width: 70 },
   thSub: { padding: "7px 8px", textAlign: "center", fontWeight: 600, fontSize: 11, background: "#F1F5F9", color: "#475569", borderBottom: "2px solid #E2E8F0", whiteSpace: "nowrap" },
   thCriteriWrap: { display: "flex", alignItems: "center", justifyContent: "center", gap: 4 },
   colTancar: { border: "none", background: "transparent", color: "#CBD5E1", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0 },
@@ -708,6 +878,34 @@ const styles = {
   btnAfegirAlumne: { padding: "10px 18px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#fff", color: "#334155", fontSize: 13.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" },
   btnImportar: { padding: "10px 18px", borderRadius: 8, border: "1px solid #BFDBFE", background: "#EFF6FF", color: "#1D4ED8", fontSize: 13.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", marginLeft: 10 },
   btnOrdenar: { padding: "10px 18px", borderRadius: 8, border: "1px solid #DDD6FE", background: "#F5F3FF", color: "#6D28D9", fontSize: 13.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", marginLeft: 10 },
+  btnExportarReunions: { padding: "10px 18px", borderRadius: 8, border: "1px solid #A7F3D0", background: "#ECFDF5", color: "#047857", fontSize: 13.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", marginLeft: 10 },
+  accionsWrap: { display: "flex", alignItems: "center", justifyContent: "center", gap: 2 },
+  btnReunions: { position: "relative", border: "none", background: "transparent", color: "#CBD5E1", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "2px 5px" },
+  btnReunionsActiu: { color: "#2563EB" },
+  comptador: { position: "absolute", top: -4, right: -4, background: "#DB2777", color: "#fff", fontSize: 9, fontWeight: 700, borderRadius: 8, minWidth: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" },
+  reunioCap: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
+  reunioSubtitol: { fontSize: 13, color: "#64748B", margin: "2px 0 0" },
+  reunioTancar: { border: "none", background: "transparent", color: "#94A3B8", cursor: "pointer", fontSize: 24, lineHeight: 1, padding: 0 },
+  reunioAccions: { display: "flex", gap: 10, marginBottom: 16 },
+  btnNovaReunio: { padding: "9px 16px", borderRadius: 8, border: "none", background: "#2563EB", color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" },
+  btnExportaU: { padding: "9px 16px", borderRadius: 8, border: "1px solid #A7F3D0", background: "#ECFDF5", color: "#047857", fontSize: 13.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" },
+  formReunio: { background: "#F8FAFC", borderRadius: 10, padding: 16, marginBottom: 16, border: "1px solid #E2E8F0" },
+  formFila: { display: "flex", gap: 12, marginBottom: 12 },
+  formCamp: { display: "flex", flexDirection: "column", gap: 5, flex: 1, marginBottom: 12 },
+  formEtiqueta: { fontSize: 12, fontWeight: 600, color: "#475569" },
+  formInput: { padding: "8px 10px", borderRadius: 7, border: "1px solid #CBD5E1", fontSize: 13.5, fontFamily: "inherit", color: "#1E293B", background: "#fff" },
+  formTextarea: { padding: "8px 10px", borderRadius: 7, border: "1px solid #CBD5E1", fontSize: 13.5, fontFamily: "inherit", color: "#1E293B", minHeight: 90, resize: "vertical" },
+  llistaReunions: { display: "flex", flexDirection: "column", gap: 10 },
+  reunioBuit: { fontSize: 13.5, color: "#94A3B8", textAlign: "center", padding: "24px 0" },
+  targetaReunio: { border: "1px solid #E2E8F0", borderRadius: 10, padding: "12px 14px", background: "#fff" },
+  targetaCap: { display: "flex", alignItems: "center", gap: 10, marginBottom: 6 },
+  targetaData: { fontSize: 13.5, fontWeight: 600, color: "#1E293B" },
+  etiquetaTipus: { fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 12 },
+  etiquetaPres: { background: "#DBEAFE", color: "#1D4ED8" },
+  etiquetaTel: { background: "#FEF3C7", color: "#B45309" },
+  reunioEliminar: { marginLeft: "auto", border: "none", background: "transparent", color: "#CBD5E1", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 4px" },
+  targetaMeta: { fontSize: 12, color: "#64748B", marginBottom: 6 },
+  targetaText: { fontSize: 13, color: "#334155", margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" },
   importTitol: { fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, margin: "0 0 8px", color: "#1E293B" },
   importAjuda: { fontSize: 13, color: "#64748B", margin: "0 0 14px", lineHeight: 1.55 },
   importArea: { width: "100%", minHeight: 140, borderRadius: 8, border: "1px solid #CBD5E1", padding: "10px 12px", fontSize: 13, fontFamily: "monospace", resize: "vertical", color: "#1E293B" },
