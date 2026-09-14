@@ -11,7 +11,7 @@ const BLOCS_INICIALS = [
     criteris: ["Recuperació", "Examen 1", "Examen 2"] },
   { id: "practica", nom: "Pràctica", color: "#059669", tint: "#ECFDF5", pes: 0.4, editable: true,
     criteris: ["Ritme 1", "Ritme 2", "Solfeig 1", "Solfeig 2", "Interpretació 1", "Interpretació 2", "Flauta"] },
-  { id: "actitud", nom: "Actitud", color: "#D97706", tint: "#FEF6E9", pes: 0.2, editable: false,
+  { id: "actitud", nom: "CE5", color: "#D97706", tint: "#FEF6E9", pes: 0.2, editable: true,
     criteris: ["Actitud"] },
 ];
 
@@ -521,7 +521,7 @@ export default function App() {
                       {b.nom}
                     </th>
                   ))}
-                  {blocs.filter(b => b.id !== "actitud").map((b) => (
+                  {blocs.map((b) => (
                     <th key={"m" + b.id} style={{ ...styles.thBloc, background: "#475569" }}>Mitj. {b.nom.toLowerCase()}</th>
                   ))}
                   <th style={{ ...styles.thBloc, background: "#7C3AED" }}>Nota aval.</th>
@@ -576,7 +576,7 @@ export default function App() {
                       )}
                     </React.Fragment>
                   ))}
-                  {blocs.filter(b => b.id !== "actitud").map((b) => (<th key={"ms" + b.id} style={styles.thSub}></th>))}
+                  {blocs.map((b) => (<th key={"ms" + b.id} style={styles.thSub}></th>))}
                   <th style={styles.thSub}></th>
                   <th style={styles.thSub}></th>
                   <th style={styles.thSub}></th>
@@ -613,7 +613,7 @@ export default function App() {
                           {b.editable && <td style={styles.tdBuit}></td>}
                         </React.Fragment>
                       ))}
-                      {blocs.filter(b => b.id !== "actitud").map((b) => {
+                      {blocs.map((b) => {
                         const m = mitjanaBloc(a, avalActiva, b);
                         return (
                           <td key={"mv" + b.id} style={styles.tdMitjana}>
@@ -654,7 +654,7 @@ export default function App() {
             <button style={styles.btnOrdenar} onClick={ordenaAlfabeticament} title="Ordena l'alumnat pel primer cognom">Ordenar A–Z</button>
             <button style={styles.btnExportarReunions} onClick={() => exportaGrup(curs)} title="Exporta a Excel totes les reunions del grup">Exportar reunions (Excel)</button>
             <p style={styles.nota}>
-              Avaluació contínua: mitjana de les notes de totes les avaluacions fetes fins ara. Pesos: 40% exàmens · 40% pràctica · 20% actitud. Les cel·les buides no penalitzen. Pots afegir o llevar columnes als blocs d'exàmens i pràctica amb els botons + i ×; cada grup té les seues columnes pròpies i independents.
+              Avaluació contínua: mitjana de les notes de totes les avaluacions fetes fins ara. Pesos: 40% exàmens · 40% pràctica · 20% CE5. Les cel·les buides no penalitzen. Pots afegir, llevar i moure columnes a qualsevol bloc amb els botons +, × i les fletxes; cada grup té les seues columnes pròpies i independents.
             </p>
           </div>
         </>
