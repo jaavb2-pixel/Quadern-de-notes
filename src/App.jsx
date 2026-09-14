@@ -192,6 +192,20 @@ export default function App() {
     });
   }
 
+  // Mou un criteri una posició dins del seu bloc (direccio: -1 esquerra, +1 dreta)
+  function mouColumna(blocId, criteri, direccio) {
+    const nousBlocs = blocs.map((b) => {
+      if (b.id !== blocId) return b;
+      const i = b.criteris.indexOf(criteri);
+      const j = i + direccio;
+      if (i < 0 || j < 0 || j >= b.criteris.length) return b; // fora de rang
+      const criterisNous = [...b.criteris];
+      [criterisNous[i], criterisNous[j]] = [criterisNous[j], criterisNous[i]];
+      return { ...b, criteris: criterisNous };
+    });
+    actualitzaCurs({ ...curs, blocs: nousBlocs });
+  }
+
   // ---- Alumnes ----
   function actualitzaCurs(nc) { setCursos(cursos.map((c) => (c.id === nc.id ? nc : c))); }
   function afegirAlumne() { actualitzaCurs({ ...curs, alumnes: [...curs.alumnes, nouAlumne(crypto.randomUUID())] }); }
@@ -520,10 +534,26 @@ export default function App() {
                   <th style={{ ...styles.thSub, ...styles.stickyCol3 }}>Nom</th>
                   {blocs.map((b) => (
                     <React.Fragment key={b.id}>
-                      {b.criteris.map((cr) => (
+                      {b.criteris.map((cr, criteriIdx) => (
                         <th key={b.id + cr} style={{ ...styles.thSub, color: b.color }}>
                           <div style={styles.thCriteriWrap}>
+                            {b.editable && (
+                              <button
+                                style={{ ...styles.colMou, opacity: criteriIdx === 0 ? 0.25 : 1, cursor: criteriIdx === 0 ? "default" : "pointer" }}
+                                onClick={() => mouColumna(b.id, cr, -1)}
+                                disabled={criteriIdx === 0}
+                                title="Moure a l'esquerra" aria-label={`Moure ${cr} a l'esquerra`}
+                              >◀</button>
+                            )}
                             <span>{cr}</span>
+                            {b.editable && (
+                              <button
+                                style={{ ...styles.colMou, opacity: criteriIdx === b.criteris.length - 1 ? 0.25 : 1, cursor: criteriIdx === b.criteris.length - 1 ? "default" : "pointer" }}
+                                onClick={() => mouColumna(b.id, cr, 1)}
+                                disabled={criteriIdx === b.criteris.length - 1}
+                                title="Moure a la dreta" aria-label={`Moure ${cr} a la dreta`}
+                              >▶</button>
+                            )}
                             {b.editable && (
                               <button style={styles.colTancar} onClick={() => eliminarColumna(b.id, cr)} title={`Eliminar ${cr}`} aria-label={`Eliminar columna ${cr}`}>×</button>
                             )}
@@ -854,6 +884,7 @@ const styles = {
   thAccions: { background: "#334155", width: 70 },
   thSub: { padding: "7px 8px", textAlign: "center", fontWeight: 600, fontSize: 11, background: "#F1F5F9", color: "#475569", borderBottom: "2px solid #E2E8F0", whiteSpace: "nowrap" },
   thCriteriWrap: { display: "flex", alignItems: "center", justifyContent: "center", gap: 4 },
+  colMou: { border: "none", background: "transparent", color: "#94A3B8", fontSize: 9, lineHeight: 1, padding: 0 },
   colTancar: { border: "none", background: "transparent", color: "#CBD5E1", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0 },
   colAfegir: { border: "1px solid", background: "transparent", borderRadius: 5, cursor: "pointer", fontSize: 15, lineHeight: 1, width: 22, height: 22, fontWeight: 600 },
   colAfegirForm: { display: "flex", gap: 3, alignItems: "center" },
