@@ -12,7 +12,7 @@ const BLOCS_INICIALS = [
   { id: "practica", nom: "Pràctica", color: "#059669", tint: "#ECFDF5", pes: 0.4, editable: true,
     criteris: ["Ritme 1", "Ritme 2", "Solfeig 1", "Solfeig 2", "Interpretació 1", "Interpretació 2", "Flauta"] },
   { id: "actitud", nom: "CE5", color: "#D97706", tint: "#FEF6E9", pes: 0.2, editable: true,
-    criteris: ["Actitud"] },
+    criteris: ["CE5"] },
 ];
 
 const AVALUACIONS = ["1a avaluació", "2a avaluació", "3a avaluació"];
@@ -24,9 +24,35 @@ function mitjanaValida(valors) {
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
+// Detecta si una columna és "oral" (conté la paraula Oral, sense distingir majúscules/accents)
+function esOral(criteri) {
+  return /oral/i.test(criteri || "");
+}
+
+// Pes de les columnes orals dins del bloc d'exàmens
+const PES_ORAL = 0.30;
+const PES_ESCRIT = 0.70;
+
 function mitjanaBloc(alumne, avalIdx, bloc) {
-  const valors = bloc.criteris.map((cr) => alumne.notes[`${avalIdx}|${bloc.id}|${cr}`]);
-  const m = mitjanaValida(valors);
+  const valorDe = (cr) => alumne.notes[`${avalIdx}|${bloc.id}|${cr}`];
+
+  // Cas especial: bloc d'exàmens amb ponderació orals 30% / resta 70%
+  if (bloc.id === "examens") {
+    const orals = bloc.criteris.filter(esOral);
+    const escrits = bloc.criteris.filter((cr) => !esOral(cr));
+    const mOral = mitjanaValida(orals.map(valorDe));
+    const mEscrit = mitjanaValida(escrits.map(valorDe));
+
+    if (mOral === null && mEscrit === null) return null;
+    // Si falta un dels dos tipus, l'altre val el 100%
+    if (mOral === null) return Math.round(mEscrit * 100) / 100;
+    if (mEscrit === null) return Math.round(mOral * 100) / 100;
+    const nota = mOral * PES_ORAL + mEscrit * PES_ESCRIT;
+    return Math.round(nota * 100) / 100;
+  }
+
+  // Blocs normals: mitjana simple de totes les columnes
+  const m = mitjanaValida(bloc.criteris.map(valorDe));
   return m === null ? null : Math.round(m * 100) / 100;
 }
 
@@ -519,6 +545,7 @@ export default function App() {
                   {blocs.map((b) => (
                     <th key={b.id} colSpan={b.criteris.length + (b.editable ? 1 : 0)} style={{ ...styles.thBloc, background: b.color }}>
                       {b.nom}
+                      {b.id === "examens" && <span style={styles.blocNota}> · orals 30% · resta 70%</span>}
                     </th>
                   ))}
                   {blocs.map((b) => (
@@ -881,6 +908,7 @@ const styles = {
   taula: { borderCollapse: "separate", borderSpacing: 0, width: "100%", fontSize: 13 },
   thAlumnat: { background: "#334155", color: "#fff", padding: "8px 12px", textAlign: "center", fontWeight: 600, fontSize: 12 },
   thBloc: { color: "#fff", padding: "8px 10px", textAlign: "center", fontWeight: 600, fontSize: 12, borderLeft: "1px solid rgba(255,255,255,0.15)" },
+  blocNota: { fontWeight: 400, fontSize: 10.5, opacity: 0.85 },
   thAccions: { background: "#334155", width: 70 },
   thSub: { padding: "7px 8px", textAlign: "center", fontWeight: 600, fontSize: 11, background: "#F1F5F9", color: "#475569", borderBottom: "2px solid #E2E8F0", whiteSpace: "nowrap" },
   thCriteriWrap: { display: "flex", alignItems: "center", justifyContent: "center", gap: 4 },
