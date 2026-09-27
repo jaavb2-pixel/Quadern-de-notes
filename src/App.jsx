@@ -24,30 +24,38 @@ function mitjanaValida(valors) {
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
-// Detecta si una columna és "oral" (conté la paraula Oral, sense distingir majúscules/accents)
-function esOral(criteri) {
-  return /oral/i.test(criteri || "");
+// Al bloc d'exàmens, una columna és "complementària" (30%) si el seu nom porta
+// alguna paraula després del codi. Si és només el codi (CE1, CE1_1, CE2_3…), és
+// "principal" (70%). El codi són lletres, xifres i guions baixos sense espais;
+// qualsevol part separada per espai que continga lletres es considera paraula.
+function esComplementaria(criteri) {
+  const net = (criteri || "").trim();
+  if (!net) return false;
+  const parts = net.split(/\s+/); // separa per espais
+  if (parts.length < 2) return false; // només el codi, sense res més → principal
+  // Hi ha alguna part (després de la primera) que continga lletres?
+  return parts.slice(1).some((p) => /[a-zA-ZàáèéíïòóúüçÀÁÈÉÍÏÒÓÚÜÇ]/.test(p));
 }
 
-// Pes de les columnes orals dins del bloc d'exàmens
-const PES_ORAL = 0.30;
-const PES_ESCRIT = 0.70;
+// Pes de cada tipus de columna dins del bloc d'exàmens
+const PES_COMPLEMENT = 0.30;
+const PES_PRINCIPAL = 0.70;
 
 function mitjanaBloc(alumne, avalIdx, bloc) {
   const valorDe = (cr) => alumne.notes[`${avalIdx}|${bloc.id}|${cr}`];
 
-  // Cas especial: bloc d'exàmens amb ponderació orals 30% / resta 70%
+  // Cas especial: bloc d'exàmens amb ponderació complementàries 30% / principals 70%
   if (bloc.id === "examens") {
-    const orals = bloc.criteris.filter(esOral);
-    const escrits = bloc.criteris.filter((cr) => !esOral(cr));
-    const mOral = mitjanaValida(orals.map(valorDe));
-    const mEscrit = mitjanaValida(escrits.map(valorDe));
+    const complementaries = bloc.criteris.filter(esComplementaria);
+    const principals = bloc.criteris.filter((cr) => !esComplementaria(cr));
+    const mCompl = mitjanaValida(complementaries.map(valorDe));
+    const mPrin = mitjanaValida(principals.map(valorDe));
 
-    if (mOral === null && mEscrit === null) return null;
+    if (mCompl === null && mPrin === null) return null;
     // Si falta un dels dos tipus, l'altre val el 100%
-    if (mOral === null) return Math.round(mEscrit * 100) / 100;
-    if (mEscrit === null) return Math.round(mOral * 100) / 100;
-    const nota = mOral * PES_ORAL + mEscrit * PES_ESCRIT;
+    if (mCompl === null) return Math.round(mPrin * 100) / 100;
+    if (mPrin === null) return Math.round(mCompl * 100) / 100;
+    const nota = mPrin * PES_PRINCIPAL + mCompl * PES_COMPLEMENT;
     return Math.round(nota * 100) / 100;
   }
 
@@ -545,7 +553,7 @@ export default function App() {
                   {blocs.map((b) => (
                     <th key={b.id} colSpan={b.criteris.length + (b.editable ? 1 : 0)} style={{ ...styles.thBloc, background: b.color }}>
                       {b.nom}
-                      {b.id === "examens" && <span style={styles.blocNota}> · orals 30% · resta 70%</span>}
+                      {b.id === "examens" && <span style={styles.blocNota}> · codi 70% · codi+text 30%</span>}
                     </th>
                   ))}
                   {blocs.map((b) => (
