@@ -144,7 +144,11 @@ export default function App() {
   const [connectat, setConnectat] = useState(false);
   const [estatDrive, setEstatDrive] = useState(""); // missatge d'estat: desant, carregant, desat…
   const [canvisSenseDesar, setCanvisSenseDesar] = useState(false);
+  const [desatAutoActiu, setDesatAutoActiu] = useState(true);
   const fileInputRef = useRef(null);
+  const temporitzadorDesat = useRef(null);
+  const desantRef = useRef(false); // evita desats automàtics solapats
+  const carregantRef = useRef(false); // true mentre apliquem dades carregades (no és un canvi de l'usuari)
 
   // Inicialitza Google Drive en arrencar
   useEffect(() => {
@@ -161,8 +165,20 @@ export default function App() {
   const primerRender = useRef(true);
   useEffect(() => {
     if (primerRender.current) { primerRender.current = false; return; }
+    if (carregantRef.current) { carregantRef.current = false; return; } // càrrega, no canvi de l'usuari
     setCanvisSenseDesar(true);
   }, [cursos]);
+
+  // Desat automàtic diferit: 2,5 s després del darrer canvi, si està connectat i actiu
+  useEffect(() => {
+    if (!connectat || !desatAutoActiu || !canvisSenseDesar) return;
+    if (temporitzadorDesat.current) clearTimeout(temporitzadorDesat.current);
+    temporitzadorDesat.current = setTimeout(() => {
+      desaDadesAlDrive({ versio: 2, cursos }, { automatic: true });
+      temporitzadorDesat.current = null;
+    }, 2500);
+    return () => { if (temporitzadorDesat.current) clearTimeout(temporitzadorDesat.current); };
+  }, [cursos, connectat, desatAutoActiu, canvisSenseDesar]);
 
   // Avisa si es tanca la pestanya amb canvis sense desar
   useEffect(() => {
@@ -381,6 +397,7 @@ export default function App() {
   }
 
   function aplicaDades(data) {
+    carregantRef.current = true; // el canvi de cursos que ve ara és una càrrega, no una edició
     const blocsGlobalsAntics = (data.blocs && Array.isArray(data.blocs)) ? data.blocs : null;
     const cursosMigrats = data.cursos.map((cs) => ({
       ...cs,
@@ -393,17 +410,30 @@ export default function App() {
   }
 
   // ---- Desar / carregar (Drive si està connectat; si no, fitxer local) ----
+  // Desa al Drive un conjunt de dades concret. Retorna true si ha anat bé.
+  async function desaDadesAlDrive(dades, { automatic = false } = {}) {
+    if (desantRef.current) return false; // ja hi ha un desat en marxa
+    desantRef.current = true;
+    try {
+      setEstatDrive(automatic ? "Desant automàticament…" : "Desant al Drive…");
+      await desaAlDrive(dades);
+      setEstatDrive(`Desat al Drive · ${new Date().toLocaleTimeString("ca-ES", { hour: "2-digit", minute: "2-digit" })}`);
+      setCanvisSenseDesar(false);
+      return true;
+    } catch (err) {
+      setEstatDrive("Error en desar al Drive. Comprova la connexió; pots descarregar una còpia local.");
+      return false;
+    } finally {
+      desantRef.current = false;
+    }
+  }
+
   async function desar() {
     const dades = { versio: 2, cursos };
+    // Cancel·la qualsevol desat automàtic pendent: desem ara mateix
+    if (temporitzadorDesat.current) { clearTimeout(temporitzadorDesat.current); temporitzadorDesat.current = null; }
     if (connectat) {
-      try {
-        setEstatDrive("Desant al Drive…");
-        await desaAlDrive(dades);
-        setEstatDrive(`Desat al Drive · ${new Date().toLocaleTimeString("ca-ES", { hour: "2-digit", minute: "2-digit" })}`);
-        setCanvisSenseDesar(false);
-      } catch (err) {
-        setEstatDrive("Error en desar al Drive. Prova de descarregar una còpia local.");
-      }
+      await desaDadesAlDrive(dades);
     } else {
       desarLocal(dades);
     }
@@ -473,6 +503,10 @@ export default function App() {
           {estaConfigurat() ? (
             connectat ? (
               <>
+                <label style={styles.autoLabel} title="Desa sol al Drive uns segons després de cada canvi">
+                  <input type="checkbox" checked={desatAutoActiu} onChange={(e) => setDesatAutoActiu(e.target.checked)} />
+                  <span>Desat automàtic</span>
+                </label>
                 <button style={styles.btnGhost} onClick={recarregaDelDrive} title="Tornar a llegir les dades del Drive">Actualitzar</button>
                 <button style={styles.btnGhost} onClick={desconnectaDrive}>Desconnectar</button>
                 <button style={styles.btnPrimary} onClick={desar}>
@@ -889,7 +923,8 @@ const styles = {
   logo: { width: 40, height: 40, borderRadius: 10, background: "#DB2777", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#fff" },
   title: { fontFamily: "'Fraunces', serif", fontSize: 21, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" },
   subtitle: { fontSize: 12.5, margin: 0, color: "#94A3B8" },
-  headerActions: { display: "flex", gap: 10 },
+  headerActions: { display: "flex", gap: 10, alignItems: "center" },
+  autoLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#E2E8F0", cursor: "pointer", userSelect: "none" },
   btnPrimary: { padding: "9px 18px", borderRadius: 8, border: "none", background: "#DB2777", color: "#fff", fontWeight: 600, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit" },
   btnGhost: { padding: "9px 18px", borderRadius: 8, border: "1px solid #334155", background: "transparent", color: "#E2E8F0", fontWeight: 500, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit" },
   cursosBar: { display: "flex", alignItems: "center", gap: 6, padding: "12px 24px 0", background: "#0F172A", flexWrap: "wrap" },
